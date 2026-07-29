@@ -13,7 +13,7 @@
 
 Real-time acoustic echo cancellation for the decibri audio stack.
 
-Decibri-aec is a deterministic, real-time acoustic echo canceller written in safe Rust. It removes the echo of far-end audio that leaks back into a microphone, tracks the echo path as it changes during a call, and stays out of the way when there is no echo to cancel.
+Decibri-aec is a deterministic, real-time acoustic echo canceller written in Rust. It removes the echo of far-end audio that leaks back into a microphone, tracks the echo path as it changes during a call, and stays out of the way when there is no echo to cancel.
 
 <a href="https://crates.io/crates/decibri-aec"><img src="https://img.shields.io/crates/v/decibri-aec.svg" alt="Crates.io"></a>
 <a href="https://github.com/decibri/decibri-aec/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0 License"></a>
