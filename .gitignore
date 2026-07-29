@@ -1,0 +1,50 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Claude Code local settings
+.claude/
+.claude/settings.local.json
+.claude/settings.json
+CLAUDE.local.md
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data and models
+/data/*
+/models/*
+# Split manifests list licensed-data filenames (covered by /data/* above; kept
+# explicit so the intent is clear even if the data rule is ever narrowed).
+/data/splits/
+
+# Audio artifacts
+*.wav
+
+# Benchmarking (local env and generated results)
+benchmarks/.venv/
+benchmarks/__pycache__/
+benchmarks/**/__pycache__/
+benchmarks/NOTES.local.md
+
+# Local notes and scratch files
+*.local.md
+
+# Local scripts
+run.ps1
+benchmarks/uplift.py
+
+# Crate-root backstop. No pass writes analysis artifacts to the crate root; any
+# that appear anyway must not be stageable. No tracked root file has these
+# extensions, so nothing legitimate is caught.
+/*.json
+/*.txt
+/*.csv
+benchmarks/test_uplift_join.py

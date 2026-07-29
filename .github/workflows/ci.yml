@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust"
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo fmt --all -- --check
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: lint
+    strategy:
+      fail-fast: false
+      # Run the test suite across x86-64 and aarch64 on three operating systems.
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust"
+      - run: cargo test --all-targets
+      # `cargo test --all-targets` does not run doctests, so the README usage
+      # example is exercised separately here.
+      - run: cargo test --doc
+
+  msrv:
+    name: MSRV (1.88)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      # Pinned to 1.88, the crate's declared rust-version, to catch accidental
+      # use of a language or std feature newer than the floor.
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust"
+      - run: cargo build --all-targets
+      - run: cargo test --all-targets
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust"
+      - run: cargo generate-lockfile
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit

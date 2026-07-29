@@ -1,0 +1,44 @@
+[package]
+name = "decibri-aec"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+license = "Apache-2.0"
+description = "Streaming acoustic echo cancellation for mono f32 audio."
+repository = "https://github.com/decibri/decibri-aec"
+readme = "README.md"
+keywords = ["audio", "echo-cancellation", "aec", "dsp", "adaptive-filter"]
+categories = ["multimedia::audio"]
+include = [
+    "/src/**",
+    "/tests/**",
+    "/examples/cancel.rs",
+    "/examples/shared/**",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+
+[dependencies]
+thiserror = "2"
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# WAV read/write for the bench harness example only; never in the shipped
+# library. Pure Rust, permissively licensed (Apache-2.0).
+hound = "3.5"
+criterion = "0.7"
+# Input-rate conversion for the bench harness example only; never in the
+# shipped library.
+decibri-resampler = "0.4"
+
+[[bench]]
+name = "tau"
+harness = false
+
+# The benchmark example carries regression tests for its resampling and
+# triplet contract; test = true has `cargo test` run them.
+[[example]]
+name = "benchmark"
+path = "examples/benchmark/main.rs"
+test = true
