@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v6
       # Pinned to 1.88, the crate's declared rust-version, to catch accidental
       # use of a language or std feature newer than the floor.
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@1.100
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust"
