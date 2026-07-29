@@ -27,7 +27,7 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 # WAV read/write for the bench harness example only; never in the shipped
 # library. Pure Rust, permissively licensed (Apache-2.0).
 hound = "3.5"
-criterion = "0.7"
+criterion = "0.8"
 # Input-rate conversion for the bench harness example only; never in the
 # shipped library.
 decibri-resampler = "0.4"
