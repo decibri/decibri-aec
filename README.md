@@ -1,3 +1,14 @@
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="center">
+  <a href="https://decibri.com">
+    <img
+      src="https://github.com/user-attachments/assets/c43894c0-aec0-49fd-b9b7-aac2563eca1d"
+      alt="Decibri Audio Echo Cancellation (AEC)"
+      width="100%">
+  </a>
+</p>
+
 # decibri-aec
 
 Real-time acoustic echo cancellation for the decibri audio stack.
