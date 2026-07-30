@@ -8,7 +8,21 @@
 //! a canceller by [`AecConfig::model`] and drives it through the
 //! [`EchoCanceller`] seam.
 
+// Diagnostics shim: with the `tracing` feature enabled the emit sites below
+// forward to `tracing`; without it they expand to nothing and the crate has no
+// tracing dependency. The macro definitions keep the call sites identical in
+// both configurations.
+#[cfg(feature = "tracing")]
 use tracing::{debug, warn};
+
+#[cfg(not(feature = "tracing"))]
+macro_rules! debug {
+    ($($arg:tt)*) => {};
+}
+#[cfg(not(feature = "tracing"))]
+macro_rules! warn {
+    ($($arg:tt)*) => {};
+}
 
 use crate::acquire::{AcquireAction, DelayAcquirer};
 use crate::canceller::{CancellerMetrics, EchoCanceller};
@@ -347,6 +361,10 @@ enum OutputBlend {
 /// more reason a host that CAN declare should: a declaration is applied on the
 /// next `process` with no warm-up at all.
 pub struct Aec {
+    /// The configuration the engine was constructed from. Read by the
+    /// diagnostic emit sites only, so a build without the `tracing` feature
+    /// never reads it.
+    #[cfg_attr(not(feature = "tracing"), allow(dead_code))]
     config: AecConfig,
     ring: ReferenceRing,
     /// The canceller [`AecConfig::model`] selected, constructed with the
@@ -426,9 +444,12 @@ impl Aec {
     /// Validates the configuration, sizes the reference ring, and seeds the
     /// alignment offset from [`AecConfig::delay_hint_ms`]. This is the only
     /// fallible operation: it returns [`AecError`] when a field is out of range.
-    /// A delay hint outside the search window is clamped with a warning rather
-    /// than rejected, because a wrong hint costs convergence time, not
-    /// correctness.
+    /// A delay hint outside the search window is clamped rather than rejected.
+    ///
+    /// A hint is measured from the reference frontier the caller's own feeding
+    /// establishes, and a hint longer than that offset cancels nothing without
+    /// reporting an error. See [`AecConfig::delay_hint_ms`] before supplying
+    /// one.
     pub fn new(config: AecConfig) -> Result<Aec, AecError> {
         if !(8000..=48000).contains(&config.sample_rate) {
             warn!(
@@ -577,7 +598,7 @@ impl Aec {
     /// This is deliberately the only way a Rho instance ever reaches the
     /// engine: it is `pub(crate)` and compiled only into test builds, so no
     /// public string, selector, or constructor can produce it.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "internal-tests"))]
     pub(crate) fn with_internal_reference(config: AecConfig) -> Result<Aec, AecError> {
         let mut aec = Aec::new(config)?;
         aec.canceller = Box::new(crate::rho::RhoCanceller::new(
@@ -608,6 +629,37 @@ impl Aec {
     /// the alignment. Whether the alignment still describes the stream is
     /// decided in [`Aec::process`], against the near stream rather than the
     /// ring (see [`AecMetrics::reference_reanchors`]).
+    ///
+    /// # A reference at the wrong rate is accepted silently
+    ///
+    /// Both streams are plain `&[f32]` with no rate attached, so a reference at
+    /// a rate other than [`AecConfig::sample_rate`] cannot be detected: it is
+    /// accepted with no error and no warning, and nothing is cancelled. This is
+    /// the likeliest integration mistake, because a host's playback and capture
+    /// devices commonly run at different rates.
+    ///
+    /// The signature is [`AecMetrics::acquisition_parked`] climbing while
+    /// [`AecMetrics::delay_samples`] stays `None`, on a stream where audio is
+    /// definitely playing. That combination means the reference is not at the
+    /// configured rate, or is not the signal that produced the echo. Resample
+    /// the reference to the configured rate before feeding it.
+    ///
+    /// # Automatic acquisition needs broadband far-end material
+    ///
+    /// The delay search is correlation-based, so it needs a far end with an
+    /// unambiguous correlation peak. Sustained periodic material (a held tone, a
+    /// steady harmonic complex, and some music) has no such peak, because every
+    /// period is an equally good match. On material like that the acquisition
+    /// can stay parked for the whole stream: the reference flows, nothing is
+    /// cancelled, [`AecMetrics::delay_samples`] stays `None`, and no error is
+    /// returned. Speech and most broadband program material lock normally.
+    ///
+    /// A caller that has to cancel against periodic far-end material can supply
+    /// [`AecConfig::delay_hint_ms`], which skips the search entirely and locks
+    /// on the supplied offset. Read that field's documentation before doing so:
+    /// the hint is measured from the reference frontier as the caller's own
+    /// feeding establishes it, not from an absolute platform latency, and a hint
+    /// longer than that offset cancels nothing.
     pub fn feed_reference(&mut self, reference: &[f32]) {
         sanitize_into(reference, &mut self.reference_scratch);
         self.ring.push(&self.reference_scratch);
@@ -872,6 +924,7 @@ impl Aec {
                         self.declarations_without_decision = 0;
                         let unchanged = self.delay_known
                             && self.delay_offset.abs_diff(delay as u64) <= self.relock_keep;
+                        #[cfg(feature = "tracing")]
                         let previous = self.delay_offset;
                         // The offset is adopted either way. The acquisition has
                         // already taken `delay` as its own alignment, and every

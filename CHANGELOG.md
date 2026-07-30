@@ -1,6 +1,45 @@
 <!-- markdownlint-disable MD024 -->
 # Decibri AEC Changelog
 
+## [0.2.0] - 2026-07-30
+
+Dependency and packaging hygiene, an allocation-free steady-state hot path, and
+documentation corrections. Output samples are byte-identical to 0.1.0.
+
+### Changed
+
+- BREAKING: `tracing` is now an off-by-default cargo feature. A default build has
+  no dependency on `tracing` and the diagnostic emit sites compile to nothing.
+  Migration, for a consumer that wants the events back:
+  `decibri-aec = { version = "0.2", features = ["tracing"] }`.
+- The real FFT owns its working buffer, allocated once at construction, so
+  neither transform direction allocates per call and `Aec::process` performs no
+  heap allocation in steady state. Output is byte-identical to 0.1.0.
+- The crate-internal reference canceller and the golden-pair suite that validates
+  the pipeline against it are behind a new `internal-tests` cargo feature and
+  excluded from the published package. The feature is internal to development: it
+  adds no public API and there is nothing in it for a consumer to enable.
+
+### Documentation
+
+- `AecConfig::delay_hint_ms`: the offset a hint seeds is measured from the far-end
+  reference frontier as the caller's own feeding establishes it, not from an
+  absolute platform latency. The two directions of error are not equivalent: a
+  hint short of that offset is absorbed by the modelled tail, while a hint longer
+  than it cancels nothing and reports no error. The previous claim that a wrong
+  hint costs convergence time rather than correctness was wrong in the overshoot
+  direction and is removed, here and on `Aec::new`.
+- `Aec::feed_reference`: a reference at a rate other than the configured one is
+  accepted silently, and the diagnostic is `AecMetrics::acquisition_parked`
+  climbing while `AecMetrics::delay_samples` stays `None`.
+- `Aec::feed_reference`: automatic acquisition needs broadband far-end material.
+  Sustained periodic material can leave acquisition parked for a whole stream;
+  `AecConfig::delay_hint_ms` is the way around it, subject to that field's
+  frontier-relative caveat.
+- SECURITY.md: the `tracing` dependency is opt-in.
+- CONTRIBUTING.md: plain `cargo test` is not the full suite, and the command that
+  is.
+
 ## [0.1.0] - 2026-07-29
 
 ### Added

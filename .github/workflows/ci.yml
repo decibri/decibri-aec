@@ -23,6 +23,9 @@ jobs:
         with:
           shared-key: "rust"
       - run: cargo clippy --all-targets -- -D warnings
+      # Both cargo features on, so a warning that only appears in one feature
+      # configuration is caught here too.
+      - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --all -- --check
 
   test:
@@ -40,6 +43,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "rust"
+      # The full suite: `internal-tests` adds the crate-internal reference
+      # canceller and its golden-pair suite, which a default build leaves out.
+      - run: cargo test --all-targets --features internal-tests
+      # The default feature configuration, which is what a consumer compiles.
       - run: cargo test --all-targets
       # `cargo test --all-targets` does not run doctests, so the README usage
       # example is exercised separately here.
@@ -58,7 +65,7 @@ jobs:
         with:
           shared-key: "rust"
       - run: cargo build --all-targets
-      - run: cargo test --all-targets
+      - run: cargo test --all-targets --features internal-tests
 
   audit:
     name: Security Audit

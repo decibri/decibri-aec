@@ -384,6 +384,12 @@ pub(crate) struct RealFft {
     /// once with [`det_cos`]/[`det_sin`], so `recombination[0]` is exactly
     /// `1 + 0i` and `recombination[n/2]` is exactly `-1 + 0i`.
     recombination: Vec<Complex>,
+    /// The half-length working buffer both directions run the complex transform
+    /// over: length `n/2`, owned and allocated once at construction so neither
+    /// direction allocates per call. Each direction writes every element before
+    /// the transform reads it, so nothing carries across calls; the buffer holds
+    /// no state between them.
+    scratch: Vec<Complex>,
 }
 
 impl RealFft {
@@ -408,6 +414,7 @@ impl RealFft {
             n,
             half: ComplexFft::new(half),
             recombination,
+            scratch: vec![Complex::ZERO; half],
         }
     }
 
@@ -434,22 +441,23 @@ impl RealFft {
     /// conjugate symmetry as `E[k] = (Z[k] + conj(Z[m-k]))/2` and
     /// `O[k] = -i*(Z[k] - conj(Z[m-k]))/2`, and the real spectrum is
     /// `X[k] = E[k] + W_n^k * O[k]`.
-    pub(crate) fn forward(&self, input: &[f32], out: &mut Vec<Complex>) {
+    pub(crate) fn forward(&mut self, input: &[f32], out: &mut Vec<Complex>) {
         assert_eq!(input.len(), self.n, "real FFT input must have length n");
         let m = self.n / 2;
+        debug_assert_eq!(self.scratch.len(), m, "the scratch buffer is fixed at n/2");
 
-        // Pack consecutive sample pairs into the half-length complex vector.
-        let mut packed: Vec<Complex> = input
-            .chunks_exact(2)
-            .map(|pair| Complex::new(pair[0] as f64, pair[1] as f64))
-            .collect();
-        self.half.forward(&mut packed);
+        // Pack consecutive sample pairs into the half-length working buffer,
+        // which writes every element and so carries nothing from the last call.
+        for (slot, pair) in self.scratch.iter_mut().zip(input.chunks_exact(2)) {
+            *slot = Complex::new(pair[0] as f64, pair[1] as f64);
+        }
+        self.half.forward(&mut self.scratch);
 
         out.clear();
         out.reserve(m + 1);
         for k in 0..=m {
-            let z_k = packed[k % m];
-            let z_mirror = packed[(m - k) % m].conj();
+            let z_k = self.scratch[k % m];
+            let z_mirror = self.scratch[(m - k) % m].conj();
             // E[k] = (Z[k] + conj(Z[m-k])) / 2.
             let even = z_k.add(z_mirror).scale(0.5);
             // O[k] = -i * (Z[k] - conj(Z[m-k])) / 2. Multiplying c by -i/2 maps
@@ -472,16 +480,18 @@ impl RealFft {
     /// real DC and Nyquist bins; it does not sanitize a malformed spectrum, so a
     /// caller that fabricates one gets a correspondingly malformed result rather
     /// than a silent correction.
-    pub(crate) fn inverse(&self, spectrum: &[Complex], out: &mut Vec<f32>) {
+    pub(crate) fn inverse(&mut self, spectrum: &[Complex], out: &mut Vec<f32>) {
         assert_eq!(
             spectrum.len(),
             self.n / 2 + 1,
             "real FFT spectrum must have length n/2 + 1"
         );
         let m = self.n / 2;
+        debug_assert_eq!(self.scratch.len(), m, "the scratch buffer is fixed at n/2");
 
-        let mut packed = vec![Complex::ZERO; m];
-        for (k, slot) in packed.iter_mut().enumerate() {
+        // The loop below writes every element of the working buffer, so it
+        // carries nothing from the last call and needs no clearing first.
+        for (k, slot) in self.scratch.iter_mut().enumerate() {
             let x_k = spectrum[k];
             // The mirror bin, supplied by conjugate symmetry for k = 0.
             let x_mirror = spectrum[m - k].conj();
@@ -494,11 +504,11 @@ impl RealFft {
             // Z[k] = E[k] + i * O[k].
             *slot = Complex::new(even.re - odd.im, even.im + odd.re);
         }
-        self.half.inverse(&mut packed);
+        self.half.inverse(&mut self.scratch);
 
         out.clear();
         out.reserve(self.n);
-        for value in &packed {
+        for value in &self.scratch {
             out.push(value.re as f32);
             out.push(value.im as f32);
         }
@@ -679,7 +689,7 @@ mod tests {
     fn real_fft_matches_naive_real_dft() {
         let mut worst = 0.0_f64;
         for &n in &SIZES {
-            let fft = RealFft::new(n);
+            let mut fft = RealFft::new(n);
             let mut lcg = Lcg::new(0xD1CE_5EED ^ n as u64);
 
             let mut cases: Vec<Vec<f32>> = Vec::new();
@@ -744,7 +754,7 @@ mod tests {
             assert_eq!(bin.im.to_bits(), 0.0_f64.to_bits(), "complex bin {k} im");
         }
 
-        let real_fft = RealFft::new(n);
+        let mut real_fft = RealFft::new(n);
         let mut input = vec![0.0_f32; n];
         input[0] = 1.0;
         let mut out = Vec::new();
@@ -772,7 +782,7 @@ mod tests {
             assert!(magnitude(*bin) < 1e-11, "complex bin {k} should vanish");
         }
 
-        let real_fft = RealFft::new(n);
+        let mut real_fft = RealFft::new(n);
         let mut out = Vec::new();
         real_fft.forward(&vec![1.0_f32; n], &mut out);
         assert_eq!(out[0].re.to_bits(), (n as f64).to_bits(), "real DC re");
@@ -788,7 +798,7 @@ mod tests {
     fn a_sinusoid_lands_in_its_bin() {
         let n = 512;
         let bin = 37;
-        let real_fft = RealFft::new(n);
+        let mut real_fft = RealFft::new(n);
         let input: Vec<f32> = (0..n)
             .map(|i| (2.0 * PI * (bin as f64) * (i as f64) / (n as f64)).cos() as f32)
             .collect();
@@ -815,7 +825,7 @@ mod tests {
     #[test]
     fn a_nyquist_alternation_lands_in_the_nyquist_bin() {
         let n = 256;
-        let real_fft = RealFft::new(n);
+        let mut real_fft = RealFft::new(n);
         let input: Vec<f32> = (0..n)
             .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
             .collect();
@@ -896,7 +906,7 @@ mod tests {
     fn real_roundtrip_recovers_the_input() {
         let mut worst = 0.0_f32;
         for &n in &SIZES {
-            let fft = RealFft::new(n);
+            let mut fft = RealFft::new(n);
             let mut lcg = Lcg::new(0xBEEF_0000 ^ n as u64);
             let input: Vec<f32> = (0..n).map(|_| lcg.next_unit() as f32).collect();
             let mut spectrum = Vec::new();
@@ -955,7 +965,7 @@ mod tests {
     #[test]
     fn the_transform_is_deterministic_across_runs() {
         let n = 512;
-        let fft = RealFft::new(n);
+        let mut fft = RealFft::new(n);
         let mut lcg = Lcg::new(0x5EED_0FF7);
         let input: Vec<f32> = (0..n).map(|_| lcg.next_unit() as f32).collect();
 
@@ -1042,7 +1052,7 @@ mod tests {
     /// paste the printed const, then rerun without the variable to confirm.
     #[test]
     fn fft_matches_the_bit_exact_golden() {
-        let fft = RealFft::new(512);
+        let mut fft = RealFft::new(512);
         let mut out = Vec::new();
         fft.forward(&golden_input(), &mut out);
 
@@ -1622,7 +1632,7 @@ mod tests {
     /// `DECIBRI_REGEN_AEC_FFT_GOLDEN=1 cargo test inverse_matches_the_bit_exact_golden -- --nocapture`.
     #[test]
     fn inverse_matches_the_bit_exact_golden() {
-        let fft = RealFft::new(512);
+        let mut fft = RealFft::new(512);
         let mut out = Vec::new();
         fft.inverse(&golden_spectrum(), &mut out);
 

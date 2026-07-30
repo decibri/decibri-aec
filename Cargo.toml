@@ -1,6 +1,6 @@
 [package]
 name = "decibri-aec"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -11,6 +11,11 @@ keywords = ["audio", "echo-cancellation", "aec", "dsp", "adaptive-filter"]
 categories = ["multimedia::audio"]
 include = [
     "/src/**",
+    # The crate-internal reference canceller and its golden-pair suite are
+    # `cfg(all(test, feature = "internal-tests"))` and never compile into a
+    # consumer build, so they are not shipped.
+    "!/src/golden.rs",
+    "!/src/rho.rs",
     "/tests/**",
     "/examples/cancel.rs",
     "/examples/shared/**",
@@ -19,9 +24,22 @@ include = [
     "/LICENSE",
 ]
 
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+# Forwards the diagnostic emit sites to `tracing`. Off by default: a default
+# build has no dependency on `tracing` and the emit sites compile to nothing.
+tracing = ["dep:tracing"]
+# Compiles the crate-internal reference canceller and the golden-pair suite that
+# validates the pipeline against it into test builds. INTERNAL: it adds no
+# public API and nothing for a consumer to enable. The full test suite runs with
+# it on.
+internal-tests = []
+
 [dependencies]
 thiserror = "2"
-tracing = { version = "0.1", default-features = false, features = ["std"] }
+tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 # WAV read/write for the bench harness example only; never in the shipped

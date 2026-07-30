@@ -51,20 +51,26 @@ cargo build --release          # optimised release build
 ### Testing
 
 ```
-cargo test --all-targets       # unit, integration, and example tests
-cargo test --doc               # the README usage example
+cargo test --all-targets --features internal-tests    # the full suite
+cargo test --all-targets                              # the default feature set
+cargo test --doc                                      # the README usage example
 ```
 
-Both must pass. `cargo test --all-targets` does not run doctests, so the second command is not optional.
+All three must pass. `cargo test --all-targets` does not run doctests, so the last command is not optional.
+
+Plain `cargo test` is not the full suite. The `internal-tests` feature adds the crate-internal reference canceller and the golden-pair suite that validates the pipeline against it, which together account for the difference between 111 and 136 library tests. Those two files are excluded from the published package, which is why they sit behind a feature rather than a plain `#[cfg(test)]`. Run the first command above when you want the full suite; CI runs both feature configurations.
+
+The `internal-tests` feature is internal to development. It adds no public API and there is nothing in it for a consumer of the crate to enable.
 
 ### Linting
 
 ```
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-Both must be clean. The CI pipeline runs exactly these commands.
+All three must be clean. The CI pipeline runs exactly these commands. Clippy runs twice because a warning can appear in one feature configuration and not the other.
 
 ## What you should know before changing the engine
 
