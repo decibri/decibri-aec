@@ -232,10 +232,46 @@ pub struct AecConfig {
     pub max_search_delay_ms: u16,
 
     /// Optional caller-supplied delay hint in milliseconds, used to seed the
-    /// delay search when an integrator has a measured platform latency
-    /// (Bluetooth especially). `None` (the default) runs the estimator with no
-    /// seed. A hint outside the search window is clamped with a warning, not
-    /// rejected: a wrong hint costs convergence time, not correctness.
+    /// delay search instead of estimating it. `None` (the default) runs the
+    /// estimator with no seed. A hint outside the search window is clamped, not
+    /// rejected.
+    ///
+    /// # The hint is measured from the reference frontier, not from an absolute
+    /// timeline
+    ///
+    /// The offset the hint seeds is measured from the far-end reference frontier
+    /// as the caller's own feeding establishes it: how far BACK from the newest
+    /// fed reference sample the echo of the block now being processed sits. It
+    /// is not an absolute platform figure. Two callers with the same physical
+    /// echo need different hints if they interleave
+    /// [`feed_reference`](crate::Aec::feed_reference) and
+    /// [`process`](crate::Aec::process) differently, because the frontier sits
+    /// somewhere different when the block is processed. A caller whose renderer
+    /// buffers ahead has a frontier that far ahead, and the hint has to include
+    /// that lead. Feeding the block's reference and then processing the block
+    /// keeps the lead at one block; keeping the reference N blocks ahead adds N
+    /// blocks to the offset.
+    ///
+    /// So a measured platform latency is the right hint only for a caller who
+    /// feeds exactly in step with processing. A hint taken from platform
+    /// latency while the reference runs ahead is short by that lead.
+    ///
+    /// # A hint that is too long is not recoverable
+    ///
+    /// The two directions of error are not equivalent, and the difference
+    /// matters more than the size:
+    ///
+    /// - SHORT of the frontier-relative offset: the remainder is inside the
+    ///   modelled tail and adaptation absorbs it, at the cost of some of the
+    ///   [`tail_ms`](AecConfig::tail_ms) budget and some convergence time.
+    ///   Short by more than the tail cancels nothing.
+    /// - LONGER than the frontier-relative offset: the aligned reference is
+    ///   older than the echo, which a causal filter cannot model, and NOTHING
+    ///   is cancelled for as long as the hint stands. No error is returned and
+    ///   the delay reads as locked.
+    ///
+    /// A caller unsure of its own lead should therefore err short, or supply no
+    /// hint at all and let the estimator find the offset.
     pub delay_hint_ms: Option<u16>,
 
     /// Residual echo suppression setting. Default: [`Suppression::Conservative`].

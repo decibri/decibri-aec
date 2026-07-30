@@ -88,8 +88,14 @@ On the recordings where that bound is meaningful, decibri captures around 80 per
 
 ```toml
 [dependencies]
-decibri-aec = "0.1"
+decibri-aec = "0.2"
 ```
+
+### Cargo features
+
+- `tracing` (off by default). Forwards the engine's diagnostic events to [`tracing`](https://crates.io/crates/tracing). Without it the crate has no dependency on `tracing` and the emit sites compile to nothing. Enable it with `features = ["tracing"]`.
+
+There is also an `internal-tests` feature, which is internal to this repository's own test suite. It adds no public API and there is nothing in it for a consumer to enable.
 
 ## Usage
 

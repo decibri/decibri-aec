@@ -26,12 +26,15 @@ mod tau;
 mod track;
 
 // The internal reference canceller (Rho) and the golden-pair suite that
-// validates the pipeline against it. Compiled only into test builds: the
-// reference is reachable for the harness and for crate-internal validation,
-// never from the published library, a public selector, or a model string.
-#[cfg(test)]
+// validates the pipeline against it. Compiled only into test builds, and only
+// with the `internal-tests` feature: the reference is reachable for the harness
+// and for crate-internal validation, never from the published library, a public
+// selector, or a model string. The two files are excluded from the published
+// package, so a build from the package has neither the files nor a declaration
+// of them.
+#[cfg(all(test, feature = "internal-tests"))]
 mod golden;
-#[cfg(test)]
+#[cfg(all(test, feature = "internal-tests"))]
 mod rho;
 
 pub use canceller::{CancellerMetrics, EchoCanceller};

@@ -555,7 +555,7 @@ impl TauCanceller {
     }
 
     /// The number of filter partitions the configured tail produced.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "internal-tests"))]
     pub(crate) fn partitions(&self) -> usize {
         self.partitions
     }
@@ -564,7 +564,7 @@ impl TauCanceller {
     /// has moved toward the shadow on. Zero on a stream where the shadow
     /// never earned the output, which is the two-path structure's do-no-harm
     /// property in one number.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "internal-tests"))]
     pub(crate) fn transfers(&self) -> u64 {
         self.transfers
     }
